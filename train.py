@@ -8,10 +8,26 @@ import torch.nn.functional as F
 from torch.utils.data import random_split
 from data import DataConfig, make_loaders, NBADataset
 from model import NBAStatModel
+import os
+local_ckpt_dir = "./checkpoints"
+drive_ckpt_dir = "/content/drive/MyDrive/nba_predictor_checkpoints"
+os.makedirs(local_ckpt_dir, exist_ok=True)
+os.makedirs(drive_ckpt_dir, exist_ok=True)
 
 def poisson_nll(y_true, rate):
     # y_true >= 0, rate > 0
     return rate - y_true * torch.log(rate + 1e-8) + torch.lgamma(y_true + 1)
+def save_checkpoint(epoch, step, model, optimizer, loss, local_ckpt_dir, drive_ckpt_dir):
+    ckpt = {
+        'epoch': epoch,
+        'step': step,
+        'model_state': model.state_dict(),
+        'optimizer_state': optimizer.state_dict(),
+        'loss': float(loss),
+    }
+    torch.save(ckpt, f"{local_ckpt_dir}/model_e{epoch}_s{step}.pt")
+    torch.save(ckpt, f"{drive_ckpt_dir}/model_e{epoch}_s{step}.pt")
+    print(f"💾 Saved checkpoint: epoch {epoch}, step {step}, loss {loss:.3f}")
 
 def train(args):
     cfg = DataConfig(csv_dir=args.csv_dir, K=args.K, N_max=args.N_max, min_games_hist=1)
@@ -86,6 +102,8 @@ def train(args):
             loss = loss_min + loss_pts + loss_reb + loss_ast + args.lambda_conserve * cons
 
             opt.zero_grad(set_to_none=True)
+            if step % 200 == 0 and step > 0:
+              save_checkpoint(epoch, step, model, opt, loss, local_ckpt_dir, drive_ckpt_dir)
             loss.backward()
             if args.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
@@ -101,10 +119,21 @@ def train(args):
             if step % args.log_every == 0:
                 denom = args.log_every
                 print(f"epoch {epoch+1} step {step}: "
-                      f"loss {running['loss']/denom:.3f} | min {running['minutes']/denom:.3f} | "
-                      f"pts {running['points']/denom:.3f} reb {running['reb']/denom:.3f} ast {running['ast']/denom:.3f} | "
+                      f"loss {running['loss']/denom:.3f} | "
+                      f"min {running['minutes']/denom:.3f} | "
+                      f"pts {running['points']/denom:.3f} "
+                      f"reb {running['reb']/denom:.3f} "
+                      f"ast {running['ast']/denom:.3f} "
                       f"cons {running['cons']/denom:.3f}")
                 running = {k:0.0 for k in running}
+            if step % 200 == 0 and step > 0:
+                ckpt = {
+                    "epoch": epoch,
+                    "step": step,
+                    "model_state": model.state_dict(),
+                    "optimizer_state": opt.state_dict(),
+                    "loss": float(loss.item()),
+                }
             ckpt = {
                 "epoch": epoch,
                 "model_state": model.state_dict(),
@@ -148,13 +177,16 @@ if __name__ == "__main__":
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--weight_decay", type=float, default=1e-4)
     ap.add_argument("--grad_clip", type=float, default=1.0)
-    ap.add_argument("--emb_dim", type=int, default=128)
-    ap.add_argument("--lstm_hidden", type=int, default=128)
     ap.add_argument("--K", type=int, default=10)
     ap.add_argument("--N_max", type=int, default=12)
     ap.add_argument("--log_every", type=int, default=50)
     ap.add_argument("--cpu", action="store_true")
     ap.add_argument("--resume_ckpt", type=str, default=None,
                 help="Path to checkpoint .pt file to resume training from")
+    ap.add_argument("--emb_dim", type=int, default=1024)
+    ap.add_argument("--lstm_hidden", type=int, default=256)
+    ap.add_argument("--num_layers", type=int, default=8)
+    ap.add_argument("--num_heads", type=int, default=8)
+    ap.add_argument("--ffn_dim", type=int, default=1024)
     args = ap.parse_args()
     train(args)
