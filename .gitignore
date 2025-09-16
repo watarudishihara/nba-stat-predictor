@@ -1,0 +1,19 @@
+# ignore virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# ignore datasets
+*.csv
+/data/
+
+# ignore checkpoints
+/checkpoints/
+*.pt
+.venv/
+__pycache__/
+*.pyc
+*.csv
+/data/
+/checkpoints/
+*.pt
