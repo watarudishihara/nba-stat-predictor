@@ -58,7 +58,7 @@ def train(args):
         ckpt = torch.load(args.resume_ckpt, map_location=device)
         model.load_state_dict(ckpt["model_state"])
         opt.load_state_dict(ckpt["optimizer_state"])
-        start_epoch = ckpt["epoch"] + 1
+        start_epoch = ckpt["epoch"]
 
     for epoch in range(start_epoch, args.epochs):
         model.train()
@@ -117,15 +117,22 @@ def train(args):
             running["cons"] += float(cons.item())
 
             if step % args.log_every == 0:
+                with torch.no_grad():
+                  min_mae = (out["minutes"] - batch["y_minutes"]).abs().mean().item()
+                  pts_mae = (out["points_rate"] - y_pts).abs().mean().item()
+                  reb_mae = (out["reb_rate"] - y_reb).abs().mean().item()
+                  ast_mae = (out["ast_rate"] - y_ast).abs().mean().item()
                 denom = args.log_every
-                print(f"epoch {epoch+1} step {step}: "
-                      f"loss {running['loss']/denom:.3f} | "
-                      f"min {running['minutes']/denom:.3f} | "
-                      f"pts {running['points']/denom:.3f} "
-                      f"reb {running['reb']/denom:.3f} "
-                      f"ast {running['ast']/denom:.3f} "
-                      f"cons {running['cons']/denom:.3f}")
-                running = {k:0.0 for k in running}
+                print(
+                    f"epoch {epoch+1} step {step}: "
+                    f"loss {running['loss']/denom:.3f} | "
+                    f"min {running['minutes']/denom:.3f} (mae {min_mae:.2f}) | "
+                    f"pts {running['points']/denom:.3f} (mae {pts_mae:.2f}) | "
+                    f"reb {running['reb']/denom:.3f} (mae {reb_mae:.2f}) | "
+                    f"ast {running['ast']/denom:.3f} (mae {ast_mae:.2f}) | "
+                    f"cons {running['cons']/denom:.3f}"
+                )
+                running = {k: 0.0 for k in running}
             if step % 200 == 0 and step > 0:
                 ckpt = {
                     "epoch": epoch,
@@ -152,7 +159,7 @@ def train(args):
                           "y_minutes","y_stats"]:
                     batch[k] = batch[k].to(device)
                 out = model(batch)
-                loss_min = F.smooth_l1_loss(out["minutes"], batch["y_minutes"], beta=2.0)
+                loss_min = F.smooth_l1_loss(out["minutes"], batch["y_minutes"], beta=6.0)
                 y_pts = batch["y_stats"][:,0]
                 y_reb = batch["y_stats"][:,1]
                 y_ast = batch["y_stats"][:,2]
