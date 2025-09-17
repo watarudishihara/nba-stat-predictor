@@ -152,16 +152,29 @@ def train(args):
                           "y_minutes","y_stats"]:
                     batch[k] = batch[k].to(device)
                 out = model(batch)
-                loss_min = F.mse_loss(out["minutes"], batch["y_minutes"])
+                loss_min = F.smooth_l1_loss(out["minutes"], batch["y_minutes"], beta=2.0)
                 y_pts = batch["y_stats"][:,0]
                 y_reb = batch["y_stats"][:,1]
                 y_ast = batch["y_stats"][:,2]
-                loss_pts = (out["points_rate"] - y_pts * torch.log(out["points_rate"]+1e-8)).mean()
-                loss_reb = (out["reb_rate"] - y_reb * torch.log(out["reb_rate"]+1e-8)).mean()
-                loss_ast = (out["ast_rate"] - y_ast * torch.log(out["ast_rate"]+1e-8)).mean()
-                loss = loss_min + loss_pts + loss_reb + loss_ast
+                min_mae = (out["minutes"] - batch["y_minutes"]).abs().mean().item()
+                pts_mae = (out["points_rate"] - y_pts).abs().mean().item()
+                reb_mae = (out["reb_rate"] - y_reb).abs().mean().item()
+                ast_mae = (out["ast_rate"] - y_ast).abs().mean().item()
+                loss = (
+                    2.0 * loss_min +   # minutes are foundational
+                    2.0 * loss_pts +   # points are the money stat
+                    1.0 * loss_reb +
+                    1.0 * loss_ast +
+                    args.lambda_conserve * cons
+                )
                 vloss += float(loss.item()); vcnt += 1
-            print(f"[val] epoch {epoch+1}: loss {vloss/max(1,vcnt):.3f}")
+            print(f"epoch {epoch+1} step {step}: "
+                  f"loss {running['loss']/denom:.3f} | "
+                  f"min {running['minutes']/denom:.3f} (mae {min_mae:.2f}) | "
+                  f"pts {running['points']/denom:.3f} (mae {pts_mae:.2f}) | "
+                  f"reb {running['reb']/denom:.3f} (mae {reb_mae:.2f}) | "
+                  f"ast {running['ast']/denom:.3f} (mae {ast_mae:.2f}) | "
+                  f"cons {running['cons']/denom:.3f}")
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
