@@ -1,4 +1,3 @@
-# data.py — CSV-based dataset/loader for NBA Stat Predictor (clean v2)
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
@@ -7,7 +6,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-# ---------------- Config ----------------
 @dataclass
 class DataConfig:
     csv_dir: str = "."
@@ -19,12 +17,9 @@ class DataConfig:
     N_max: int = 12
     min_games_hist: int = 1
 
-# ---------------- IO helpers ----------------
 def _read_csv(path: str) -> pd.DataFrame:
-    # low_memory=False avoids mixed-dtype chunking warnings
     return pd.read_csv(path, low_memory=False)
 
-# ---------------- ETL ----------------
 def build_master_table(cfg: DataConfig) -> pd.DataFrame:
     d = cfg
     ps = _read_csv(f"{d.csv_dir}/{d.player_stats_csv}")
@@ -138,7 +133,6 @@ def build_master_table(cfg: DataConfig) -> pd.DataFrame:
 
     return ps
 
-# ---------------- Vocab ----------------
 class IdVocab:
     def __init__(self, ids: List[int]):
         uniq = sorted(set(int(x) for x in ids if pd.notna(x)))
@@ -153,7 +147,6 @@ class IdVocab:
             mask += [0]*(max_len-len(mask))
         return np.array(idxs, dtype=np.int64), np.array(mask, dtype=np.int64)
 
-# ---------------- Dataset ----------------
 class NBADataset(Dataset):
     """One example per (gameId, personId) with pregame features, history, rosters, and targets."""
     def __init__(self, cfg: DataConfig):
@@ -176,7 +169,7 @@ class NBADataset(Dataset):
         self.df[self.hist_cols] = self.df[self.hist_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
         self.hist_dim = len(self.hist_cols)
 
-        # Pregame features (define BEFORE coercion!)
+        # Pregame features
         bio_cols = [c for c in ["height","bodyWeight","guard","forward","center"] if c in self.df.columns]
         W = 5
         roll_cols = [f"roll{W}_{c}_mean" for c in ["numMinutes","points","assists","reboundsTotal","turnovers","fieldGoalsAttempted","freeThrowsAttempted","threePointersAttempted"]] + \
@@ -238,7 +231,6 @@ class NBADataset(Dataset):
         }
         return sample
 
-# ---------------- Collator / Loader ----------------
 def collate_batch(batch: List[dict]):
     out = {}
     for key in ["player_idx","pregame","hist_seq","hist_mask",
